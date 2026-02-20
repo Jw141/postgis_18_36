@@ -22,7 +22,7 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
     /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf
 
 # --- STAGE 2: Hardened Final Image ---
-FROM rockylinux:9.7-minimal
+FROM rockylinux:9.7
 
 # Setup postgres user (UID 26 is standard for PG on RHEL/Rocky)
 RUN microdnf install -y shadow-utils && \
