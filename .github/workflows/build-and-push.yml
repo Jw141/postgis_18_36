@@ -40,7 +40,6 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
           format: 'table'
-          output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0' # Fails the build if vulnerabilities are found
 

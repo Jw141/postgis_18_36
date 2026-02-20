@@ -29,6 +29,9 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
 # --- STAGE 2: Hardened Final Image ---
 FROM docker.io/rockylinux/rockylinux:9.7-minimal
 
+# Update all base packages to clear OS vulnerabilities
+RUN microdnf update -y && microdnf install -y shadow-utils
+
 # Setup postgres user (UID 26 is standard for Postgres)
 RUN microdnf install -y shadow-utils && \
     groupadd -g 26 postgres && \
