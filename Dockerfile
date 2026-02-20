@@ -1,5 +1,5 @@
 # --- STAGE 1: Builder ---
-FROM rockylinux:9 AS builder
+FROM docker.io/rockylinux/rockylinux:9.7 AS builder
 
 # 1. Install system utilities and EPEL
 RUN dnf install -y dnf-plugins-core epel-release && \
@@ -28,7 +28,7 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
     PATH=$PATH:/usr/pgsql-18/bin /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf
     
 # --- STAGE 2: Hardened Final Image ---
-FROM rockylinux:9-minimal
+FROM docker.io/rockylinux/rockylinux:9.7-minimal
 
 # Setup postgres user
 RUN microdnf install -y shadow-utils && \
