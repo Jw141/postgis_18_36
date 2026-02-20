@@ -35,17 +35,26 @@ jobs:
           load: true # Loads image into the local runner so Trivy can see it
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
 
-      - name: Run Trivy Vulnerability Scanner
+      - name: Run Trivy (Table output for logs)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
           format: 'table'
           severity: 'CRITICAL,HIGH'
-          exit-code: '0' # Fails the build if vulnerabilities are found
+          exit-code: '0' # Don't fail yet, we want to save the SARIF next
+
+      - name: Run Trivy (SARIF for Security tab)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1' # This will fail the build if vulnerabilities exist
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always() # Upload results even if the scan fails
+        if: always() # Ensure the upload happens even if the step above fails
         with:
           sarif_file: 'trivy-results.sarif'
 
