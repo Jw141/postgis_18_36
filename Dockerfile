@@ -1,5 +1,5 @@
 # --- STAGE 1: Builder ---
-FROM rockylinux:9.7 AS builder
+FROM rockylinux:9 AS builder
 
 # Install PostgreSQL 18, PostGIS 3.6, and TimescaleDB repos
 RUN dnf install -y epel-release && \
@@ -22,7 +22,7 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
     /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf
 
 # --- STAGE 2: Hardened Final Image ---
-FROM rockylinux:9.7
+FROM rockylinux:9-minimal
 
 # Setup postgres user (UID 26 is standard for PG on RHEL/Rocky)
 RUN microdnf install -y shadow-utils && \
