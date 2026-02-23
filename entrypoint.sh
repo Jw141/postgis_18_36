@@ -14,7 +14,11 @@ if [ ! -d "$PGDATA" ] || [ -z "$(ls -A "$PGDATA" 2>/dev/null)" ]; then
     cp -rp "$TEMPLATE_DATA/." "$PGDATA/"
 fi
 
-# 2. RUNTIME PROVISIONING
+# 2. ENFORCE PERMISSIONS (Fixes the 0755 vs 0700 error)
+# This ensures only the postgres user can access the data
+chmod 0700 "$PGDATA"
+
+# 3. RUNTIME PROVISIONING
 if [ ! -f "$SETUP_FLAG" ] && [ -n "$POSTGRES_USER" ]; then
     echo "First boot: Configuring network and identity for $POSTGRES_USER..."
 
@@ -54,6 +58,6 @@ EOSQL
     touch "$SETUP_FLAG"
 fi
 
-# 3. EXECUTE PRODUCTION SERVER
+# 4. EXECUTE PRODUCTION SERVER
 echo "Starting PostgreSQL..."
 exec postgres -D "$PGDATA" "$@"
