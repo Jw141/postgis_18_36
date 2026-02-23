@@ -26,11 +26,14 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
 # --- STAGE 2: Hardened Final Image ---
 FROM docker.io/rockylinux/rockylinux:9.7
 
-# 1. Install Repos and CRB (Required for PostGIS dependencies)
-RUN dnf install -y epel-release https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
+# 1. Force a refresh of all system libraries to pull the latest security patches
+# This will update expat to 2.5.0-5.el9_7.1 and openssl to 1:3.5.1-7.el9_7
+RUN dnf clean all && \
+    dnf update -y --refresh && \
+    dnf install -y epel-release https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf config-manager --set-enabled crb
 
-# 2. Install Runtimes (This automatically creates the 'postgres' user)
+# 2. Re-install runtimes (they will now pull the patched dependencies)
 RUN dnf install -y --allowerasing \
     shadow-utils \
     postgresql18-server \
