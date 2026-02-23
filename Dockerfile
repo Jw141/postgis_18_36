@@ -14,7 +14,7 @@ RUN GOPROXY=https://proxy.golang.org,direct \
 # 3. Install official PostgreSQL 18 Repo and binaries
 RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf -qy module disable postgresql && \
-    dnf install -y postgresql18-server postgresql18-devel postgis36_18
+    dnf install -y postgresql18-server postgresql18-devel postgis36_18 timescaledb_18
 
 # 4. Initialize and Tune
 RUN mkdir -p /tmp/data && chown postgres:postgres /tmp/data
@@ -32,19 +32,39 @@ RUN microdnf update -y && microdnf install -y shadow-utils
 RUN groupadd -g 26 postgres && \
     useradd -u 26 -g postgres -d /var/lib/pgsql -s /bin/bash postgres
 
+# Runtime dependencies for PostGIS/Postgres
+RUN microdnf install -y \
+    libxml2 \
+    geos \
+    proj \
+    gdal-libs \
+    openssl \
+    glibc \
+    numactl-libs \
+    libicu \
+    liburing \
+    lz4 \
+    zstd \
+    krb5-libs \
+    openldap \
+    systemd-libs && \
+    microdnf clean all
+
 # Copy binaries from builder
 COPY --from=builder /usr/pgsql-18/ /usr/pgsql-18/
 COPY --from=builder /usr/bin/timescaledb-tune /usr/bin/
-COPY --from=builder --chown=postgres:postgres /tmp/data/postgresql.conf /var/lib/pgsql/template_configs/postgresql.conf
-
-# Runtime dependencies for PostGIS/Postgres
-RUN microdnf install -y libxml2 geos proj gdal-libs openssl glibc && \
-    microdnf clean all
+COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/data/
 
 ENV PATH=/usr/pgsql-18/bin:$PATH
 USER postgres
 WORKDIR /var/lib/pgsql
-RUN mkdir -p /var/lib/pgsql/18/data && chmod 700 /var/lib/pgsql/18/data
+
+# Set permissions (important for security)
+RUN chmod 700 /var/lib/pgsql/18/data
 
 EXPOSE 5432
-CMD ["postgres", "-D", "/var/lib/pgsql/18/data"]
+
+CMD ["postgres", "-D", "/var/lib/pgsql/18/data", \
+     "-c", "listen_addresses=*", \
+     "-c", "unix_socket_directories=/tmp", \
+     "-c", "logging_collector=off"]
