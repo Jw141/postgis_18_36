@@ -18,6 +18,7 @@ RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x
 
 # 4. Initialize and Tune
 RUN mkdir -p /tmp/data && chown postgres:postgres /tmp/data
+RUN mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql
 USER postgres
 RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
     PATH=$PATH:/usr/pgsql-18/bin /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf
@@ -31,6 +32,9 @@ RUN microdnf update -y && microdnf install -y shadow-utils
 # Setup postgres user
 RUN groupadd -g 26 postgres && \
     useradd -u 26 -g postgres -d /var/lib/pgsql -s /bin/bash postgres
+
+# CREATE THE SOCKET DIRECTORY HERE (Crucial for psql)
+RUN mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql && chmod 775 /run/postgresql
 
 # Runtime dependencies for PostGIS/Postgres
 RUN microdnf install -y \
@@ -66,5 +70,4 @@ EXPOSE 5432
 
 CMD ["postgres", "-D", "/var/lib/pgsql/18/data", \
      "-c", "listen_addresses=*", \
-     "-c", "unix_socket_directories=/tmp", \
      "-c", "logging_collector=off"]
