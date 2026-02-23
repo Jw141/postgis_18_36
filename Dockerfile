@@ -26,14 +26,13 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
 # --- STAGE 2: Hardened Final Image ---
 FROM docker.io/rockylinux/rockylinux:9.7
 
-# 1. Force a refresh of all system libraries to pull the latest security patches
-# This will update expat to 2.5.0-5.el9_7.1 and openssl to 1:3.5.1-7.el9_7
+# 1. Patch vulnerabilities and setup repos
 RUN dnf clean all && \
     dnf update -y --refresh && \
     dnf install -y epel-release https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf config-manager --set-enabled crb
 
-# 2. Re-install runtimes (they will now pull the patched dependencies)
+# 2. Install Runtimes (automates user creation and library dependencies)
 RUN dnf install -y --allowerasing \
     shadow-utils \
     postgresql18-server \
@@ -41,26 +40,26 @@ RUN dnf install -y --allowerasing \
     timescaledb_18 && \
     dnf clean all
 
-# 3. Create socket directory (dnf might create it, but we ensure permissions)
-RUN mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql && chmod 775 /run/postgresql
+# 3. Directories and Permissions
+# We copy to /template_data so it doesn't get hidden by a volume mount
+RUN mkdir -p /run/postgresql /docker-entrypoint-initdb.d /var/lib/pgsql/18/template_data && \
+    chown -R postgres:postgres /run/postgresql /docker-entrypoint-initdb.d /var/lib/pgsql
 
-# 4. Copy data and binaries from builder
+# 4. Copy Assets
 COPY --from=builder /usr/pgsql-18/ /usr/pgsql-18/
 COPY --from=builder /usr/bin/timescaledb-tune /usr/bin/
-# Note: We ensure the data directory copied over is owned by the user dnf created
-COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/data/
+COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/template_data/
 
-# 5. Entrypoint setup
+# 5. Environment and Entrypoint
 COPY --chown=postgres:postgres entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV PATH=/usr/pgsql-18/bin:$PATH
+ENV PGDATA=/var/lib/pgsql/18/data
 USER postgres
 WORKDIR /var/lib/pgsql
-RUN chmod 700 /var/lib/pgsql/18/data
 
 EXPOSE 5432
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["postgres", "-D", "/var/lib/pgsql/18/data", \
-     "-c", "listen_addresses=*", \
-     "-c", "logging_collector=off"]
+# CMD is passed to the 'postgres' command inside entrypoint.sh
+CMD ["-c", "logging_collector=off"]
