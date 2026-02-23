@@ -24,50 +24,40 @@ RUN /usr/pgsql-18/bin/initdb -D /tmp/data && \
     PATH=$PATH:/usr/pgsql-18/bin /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf
 
 # --- STAGE 2: Hardened Final Image ---
-FROM docker.io/rockylinux/rockylinux:9.7-minimal
+FROM docker.io/rockylinux/rockylinux:9.7
 
-# Update all base packages to clear OS vulnerabilities
-RUN microdnf update -y && microdnf install -y shadow-utils
+# 1. Install Repos and CRB (Required for PostGIS dependencies)
+RUN dnf install -y epel-release https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
+    dnf config-manager --set-enabled crb
 
-# Setup postgres user
-RUN groupadd -g 26 postgres && \
-    useradd -u 26 -g postgres -d /var/lib/pgsql -s /bin/bash postgres
+# 2. Install Runtimes (This automatically creates the 'postgres' user)
+RUN dnf install -y --allowerasing \
+    shadow-utils \
+    postgresql18-server \
+    postgis36_18 \
+    timescaledb_18 && \
+    dnf clean all
 
-# CREATE THE SOCKET DIRECTORY HERE (Crucial for psql)
+# 3. Create socket directory (dnf might create it, but we ensure permissions)
 RUN mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql && chmod 775 /run/postgresql
 
-# Runtime dependencies for PostGIS/Postgres
-RUN microdnf install -y \
-    libxml2 \
-    geos \
-    proj \
-    gdal-libs \
-    openssl \
-    glibc \
-    numactl-libs \
-    libicu \
-    liburing \
-    lz4 \
-    zstd \
-    krb5-libs \
-    openldap \
-    systemd-libs && \
-    microdnf clean all
-
-# Copy binaries from builder
+# 4. Copy data and binaries from builder
 COPY --from=builder /usr/pgsql-18/ /usr/pgsql-18/
 COPY --from=builder /usr/bin/timescaledb-tune /usr/bin/
+# Note: We ensure the data directory copied over is owned by the user dnf created
 COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/data/
+
+# 5. Entrypoint setup
+COPY --chown=postgres:postgres entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV PATH=/usr/pgsql-18/bin:$PATH
 USER postgres
 WORKDIR /var/lib/pgsql
-
-# Set permissions (important for security)
 RUN chmod 700 /var/lib/pgsql/18/data
 
 EXPOSE 5432
-
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["postgres", "-D", "/var/lib/pgsql/18/data", \
      "-c", "listen_addresses=*", \
      "-c", "logging_collector=off"]
