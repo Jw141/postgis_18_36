@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: jw141/postgis_18_36 # Ensure this is lowercase
+  IMAGE_NAME: jw141/postgis # Ensure this is lowercase
 
 jobs:
   build-and-scan:
@@ -65,5 +65,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:18-3.6-rockylinux
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
