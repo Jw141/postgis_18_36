@@ -37,7 +37,8 @@ RUN dnf install -y --allowerasing \
     shadow-utils \
     postgresql18-server \
     postgis36_18 \
-    timescaledb_18 && \
+    timescaledb_18 \
+    glibc-langpack-en && \
     dnf clean all
 
 # 3. Directories and Permissions
@@ -56,6 +57,9 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV PATH=/usr/pgsql-18/bin:$PATH
 ENV PGDATA=/var/lib/pgsql/18/data
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 USER postgres
 WORKDIR /var/lib/pgsql
 
