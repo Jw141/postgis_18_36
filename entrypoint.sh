@@ -100,7 +100,5 @@ if [ -f "$SETUP_FLAG" ] && [ -n "$POSTGRES_PASSWORD" ]; then
     wait "$sync_pid"
 fi
 
-[Image of PostgreSQL entrypoint lifecycle showing initialization, configuration, and runtime]
-
 echo "Starting PostgreSQL..."
 exec postgres -D "$PGDATA" "$@"
