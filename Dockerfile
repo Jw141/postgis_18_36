@@ -1,15 +1,19 @@
-# --- STAGE 1: Builder ---
+# --- STAGE 0: Isolated Upstream Go Compiler ---
+# Using the official upstream image guarantees the latest patched Go standard library
+FROM docker.io/library/golang:1.26-bookworm AS go-builder
+RUN GOPROXY=https://proxy.golang.org,direct \
+    go install github.com/timescale/timescaledb-tune/cmd/timescaledb-tune@latest
+
+# --- STAGE 1: Builder (DB Initialization & Tuning) ---
 FROM docker.io/rockylinux/rockylinux:9.7 AS builder
 
-# 1. Install system utilities, EPEL, Go, and locales
+# 1. Install system utilities and EPEL (Removed golang from here!)
 RUN dnf install -y dnf-plugins-core epel-release && \
     dnf config-manager --set-enabled crb && \
-    dnf install -y --allowerasing golang git gcc make cmake openssl-devel curl tar glibc-langpack-en
+    dnf install -y --allowerasing git gcc make cmake openssl-devel curl tar glibc-langpack-en
 
-# 2. Build the TimescaleDB Tuner
-RUN GOPROXY=https://proxy.golang.org,direct \
-    go install github.com/timescale/timescaledb-tune/cmd/timescaledb-tune@latest && \
-    cp /root/go/bin/timescaledb-tune /usr/bin/
+# 2. Fetch the clean binary from the official Go builder stage
+COPY --from=go-builder /go/bin/timescaledb-tune /usr/bin/timescaledb-tune
 
 # 3. Install PostgreSQL 18 Repo, binaries, and extensions
 RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
@@ -20,7 +24,6 @@ RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x
 RUN mkdir -p /tmp/data /run/postgresql && chown postgres:postgres /tmp/data /run/postgresql
 USER postgres
 
-# Initialize DB and inject both timescaledb and pg_cron into shared_preload_libraries
 RUN /usr/pgsql-18/bin/initdb -D /tmp/data --locale=en_US.UTF-8 --encoding=UTF8 && \
     PATH=$PATH:/usr/pgsql-18/bin /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf && \
     echo "shared_preload_libraries = 'timescaledb, pg_cron'" >> /tmp/data/postgresql.conf
@@ -34,7 +37,7 @@ RUN dnf clean all && \
     dnf install -y epel-release https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf config-manager --set-enabled crb
 
-# 2. Install Runtimes, Extensions, Locales, and Safe Diagnostic Utilities
+# 2. Install Runtimes, Extensions, Locales, and Diagnostic Utilities
 RUN dnf install -y --allowerasing \
     shadow-utils \
     postgresql18-server \
@@ -55,11 +58,11 @@ RUN mkdir -p /run/postgresql /docker-entrypoint-initdb.d /var/lib/pgsql/18/templ
     chown -R postgres:postgres /run/postgresql /docker-entrypoint-initdb.d /var/lib/pgsql && \
     chmod 700 /var/lib/pgsql
 
-# 4. Documentation Setup (Done as root)
+# 4. Documentation Setup
 COPY README.md /usr/local/share/doc/spatial-db-readme.md
 RUN echo "alias image-info='cat /usr/local/share/doc/spatial-db-readme.md'" >> /etc/bashrc
 
-# 5. Copy Verified Assets from Builder
+# 5. Copy Verified Assets from Builder stages
 COPY --from=builder /usr/pgsql-18/ /usr/pgsql-18/
 COPY --from=builder /usr/bin/timescaledb-tune /usr/bin/
 COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/template_data/
@@ -86,7 +89,7 @@ LABEL org.opencontainers.image.title="Hardened PostGIS, TimescaleDB & pg_cron" \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD pg_isready -U "${POSTGRES_USER:-postgres}" || exit 1
 
-# 9. Runtime Configuration (Non-Root Enforcement)
+# 9. Runtime Configuration
 USER postgres
 WORKDIR /var/lib/pgsql
 
