@@ -1,4 +1,4 @@
-name: Build and Secure Postgres
+name: Build and Secure Postgres Ecosystem
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: jw141/postgis # Ensure this is lowercase
 
 jobs:
   build-and-scan:
@@ -16,6 +15,19 @@ jobs:
       contents: read
       packages: write
       security-events: write # Required to upload scan results
+
+    strategy:
+      fail-fast: false # If one image has a CVE vulnerability, don't cancel the other build
+      matrix:
+        include:
+          - image_identifier: postgis
+            image_name: jw141/postgis
+            dockerfile: Dockerfile
+            prod_tag: 18-3.6-rockylinux
+          - image_identifier: pgbouncer
+            image_name: jw141/pgbouncer
+            dockerfile: Dockerfile.pgbouncer
+            prod_tag: 18-rockylinux
 
     steps:
       - name: Checkout repository
@@ -32,13 +44,14 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           load: true # Loads image into the local runner so Trivy can see it
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
+          tags: ${{ env.REGISTRY }}/${{ matrix.image_name }}:temp
 
       - name: Run Trivy (Table output for logs)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image_name }}:temp
           format: 'table'
           severity: 'CRITICAL,HIGH'
           exit-code: '0' # Don't fail yet, we want to save the SARIF next
@@ -46,9 +59,9 @@ jobs:
       - name: Run Trivy (SARIF for Security tab)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:temp
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image_name }}:temp
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'trivy-results-${{ matrix.image_identifier }}.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '1' # This will fail the build if vulnerabilities exist
 
@@ -56,14 +69,15 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         if: always() # Ensure the upload happens even if the step above fails
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: 'trivy-results-${{ matrix.image_identifier }}.sarif'
 
       - name: Final Build and Push
         if: success() # Only push if the scan passed
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:18-3.6-rockylinux
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.image_name }}:${{ matrix.prod_tag }}
+            ${{ env.REGISTRY }}/${{ matrix.image_name }}:${{ github.sha }}
