@@ -8,7 +8,7 @@ RUN dnf clean all && \
     dnf config-manager --set-enabled crb
 
 # 2. Install PgBouncer, Locales, and Core Diagnostic Utilities
-# Incorporates requested tools (vi, top, ps, ping, less) for unified troubleshooting
+# Note: This step automatically creates the 'pgbouncer' user and group natively.
 RUN dnf install -y --allowerasing \
     shadow-utils \
     pgbouncer \
@@ -21,38 +21,33 @@ RUN dnf install -y --allowerasing \
     ncurses && \
     dnf clean all
 
-# 3. Create Dedicated Non-Root Runtime User
-# Hardens execution by isolating PgBouncer to its own non-privileged system identity
-RUN groupadd -g 6432 pgbouncer && \
-    useradd -u 6432 -g pgbouncer -M -s /sbin/nologin pgbouncer
-
-# 4. Hardened Directories and Permissions
+# 3. Hardened Directories and Permissions
+# (We use the pgbouncer user/group automatically created by the DNF package above)
 RUN mkdir -p /etc/pgbouncer /var/log/pgbouncer /run/pgbouncer && \
     chown -R pgbouncer:pgbouncer /etc/pgbouncer /var/log/pgbouncer /run/pgbouncer && \
     chmod 750 /etc/pgbouncer /var/log/pgbouncer /run/pgbouncer
 
-# 5. Environment and Shell Adjustments
+# 4. Environment and Shell Adjustments
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     TERM=xterm-256color
 
-# 6. Copy Runtime Automation Scripts
+# 5. Copy Runtime Automation Scripts
 COPY --chown=pgbouncer:pgbouncer pgbouncer-entrypoint.sh /usr/local/bin/pgbouncer-entrypoint.sh
 COPY --chown=pgbouncer:pgbouncer pgbouncer.ini /etc/pgbouncer/pgbouncer.ini.template
 RUN chmod +x /usr/local/bin/pgbouncer-entrypoint.sh
 
-# 7. Metadata (OCI Standard)
+# 6. Metadata (OCI Standard)
 LABEL org.opencontainers.image.title="Hardened PgBouncer Connection Pooler" \
       org.opencontainers.image.description="Standalone connection pooler optimized for PostgreSQL 18. Built on Rocky Linux 9.7. Includes non-root scaling boundaries and embedded telemetry diagnostics." \
       org.opencontainers.image.vendor="Radix Metasystems"
 
-# 8. Healthcheck
-# Validates that PgBouncer is answering internal network control loops
+# 7. Healthcheck
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD psql -p 6432 -U pgbouncer -d pgbouncer -c "SHOW VERSION;" || exit 1
 
-# 9. Runtime Execution Context
+# 8. Runtime Execution Context
 USER pgbouncer
 WORKDIR /etc/pgbouncer
 
