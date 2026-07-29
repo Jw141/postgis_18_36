@@ -1,34 +1,24 @@
-# --- STAGE 0: Isolated Upstream Go Compiler ---
-# Using the official upstream image guarantees the latest patched Go standard library
-FROM docker.io/library/golang:1.26.5-bookworm AS go-builder
-RUN GOPROXY=https://proxy.golang.org,direct \
-    go install github.com/timescale/timescaledb-tune/cmd/timescaledb-tune@latest
-
-# --- STAGE 1: Builder (DB Initialization & Tuning) ---
+# --- STAGE 1: Builder (DB Template Initialization) ---
 FROM docker.io/rockylinux/rockylinux:9.7 AS builder
 
-# 1. Install system utilities and EPEL (Removed golang from here!)
+# 1. Install system utilities and EPEL
 RUN dnf install -y dnf-plugins-core epel-release && \
     dnf config-manager --set-enabled crb && \
     dnf install -y --allowerasing git gcc make cmake openssl-devel curl tar glibc-langpack-en
 
-# 2. Fetch the clean binary from the official Go builder stage
-COPY --from=go-builder /go/bin/timescaledb-tune /usr/bin/timescaledb-tune
-
-# 3. Install PostgreSQL 18 Repo, binaries, and extensions
+# 2. Install PostgreSQL 18 Repo, binaries, and extensions
 RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm && \
     dnf -qy module disable postgresql && \
     dnf install -y postgresql18-server postgresql18-devel postgis36_18 timescaledb_18 pg_cron_18
 
-# 4. Initialize and Tune with UTF-8 support
+# 3. Initialize template database and enable extensions
 RUN mkdir -p /tmp/data /run/postgresql && chown postgres:postgres /tmp/data /run/postgresql
 USER postgres
 
 RUN /usr/pgsql-18/bin/initdb -D /tmp/data --locale=en_US.UTF-8 --encoding=UTF8 && \
-    PATH=$PATH:/usr/pgsql-18/bin /usr/bin/timescaledb-tune --quiet --yes --conf-path=/tmp/data/postgresql.conf && \
     echo "shared_preload_libraries = 'timescaledb, pg_cron'" >> /tmp/data/postgresql.conf
 
-# --- STAGE 2: Hardened Final Image ---
+# --- STAGE 2: Hardened Final Runtime Image ---
 FROM docker.io/rockylinux/rockylinux:9.7
 
 # 1. Patch vulnerabilities and setup repos
@@ -62,9 +52,8 @@ RUN mkdir -p /run/postgresql /docker-entrypoint-initdb.d /var/lib/pgsql/18/templ
 COPY README.md /usr/local/share/doc/spatial-db-readme.md
 RUN echo "alias image-info='cat /usr/local/share/doc/spatial-db-readme.md'" >> /etc/bashrc
 
-# 5. Copy Verified Assets from Builder stages
+# 5. Copy Verified Assets from Builder stage
 COPY --from=builder /usr/pgsql-18/ /usr/pgsql-18/
-COPY --from=builder /usr/bin/timescaledb-tune /usr/bin/
 COPY --from=builder --chown=postgres:postgres /tmp/data/ /var/lib/pgsql/18/template_data/
 
 # 6. Environment and Entrypoint
@@ -89,7 +78,7 @@ LABEL org.opencontainers.image.title="Hardened PostGIS, TimescaleDB & pg_cron" \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD pg_isready -U "${POSTGRES_USER:-postgres}" || exit 1
 
-# 9. Runtime Configuration
+# 9. Runtime Execution Context
 USER postgres
 WORKDIR /var/lib/pgsql
 
