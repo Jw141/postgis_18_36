@@ -1,6 +1,6 @@
 # --- STAGE 0: Isolated Upstream Go Compiler ---
 # Using the official upstream image guarantees the latest patched Go standard library
-FROM docker.io/library/golang:1.26-bookworm AS go-builder
+FROM docker.io/library/golang:1.26.5-bookworm AS go-builder
 RUN GOPROXY=https://proxy.golang.org,direct \
     go install github.com/timescale/timescaledb-tune/cmd/timescaledb-tune@latest
 
